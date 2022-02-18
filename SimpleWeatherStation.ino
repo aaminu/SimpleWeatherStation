@@ -2,6 +2,7 @@
 #include <SPI.h>
 #include <DHT.h>
 #include <TFT_eSPI.h>
+#include "Free_Fonts.h"
 #include "RTC_SAMD51.h"
 #include "DateTime.h"
 #include "config.h"
@@ -12,15 +13,16 @@ WiFiUDP udp;
 unsigned int localPort = 2390; // local port to listen for UDP packets
 
 //NTP and RTC
-byte packetBuffer[ NTP_PACKET_SIZE ]; //buffer to hold incoming and outgoing packets
+byte packetBuffer[ NTP_PACKET_SIZE ]; //buffer to hold incoming and outgoing packets for RTC
 unsigned long devicetime;
 
 RTC_SAMD51 rtc; //RTC object
 DateTime now; // declare a time object
 
 // for use by the Adafuit RTClib library
-char daysOfTheWeek[7][12] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
-
+char daysOfTheWeek[7][5] = { "Sun", "Mon", "Tue", "Wed", "Thur", "Fri", "Sat" };
+char monthsOfTheYear[12][5] = { "Jan.", "Feb.", "Mar.", "Apr.", "May.", "Jun.", "Jul.", "Aug.", "Sep.", 
+                                "Oct.", "Nov.", "Dec." };
 //type denifination using alias
 using arraytype = std::array< float, 2 >;
 
@@ -31,8 +33,6 @@ arraytype temp_humd;
 //LCD Display on the WIO
 TFT_eSPI tft;
 volatile bool SCREEN_FLAG {0};
-volatile unsigned int X_OFFSET {0};
-const unsigned int Y_OFFSET {21};
 
 
 //Prototypes for function defined at the bottom of this doucment
@@ -46,12 +46,8 @@ unsigned long getNTPtime();
 
 void setup()
 {
-//     //Begin serial
-       Serial.begin(115200);
-       while (!Serial)
-        {
-            ;
-        }
+    //Begin serial
+    //Serial.begin(115200);
 
     //Connect to WiFi
     connectWifi(); 
@@ -60,17 +56,17 @@ void setup()
     devicetime = getNTPtime();
 
     // Use Network Time, else use System Time get .
-    if (devicetime == 0)
+    if (devicetime != 0)
     {
-        Serial.println("Failed to get time from network time server.");
         rtc.begin();
-        rtc.adjust(DateTime(devicetime)); //Using the network time to setup rtc
+        rtc.adjust(DateTime(devicetime)); //Using the network time to setup rtc 
     }
     else
     {
+        Serial.println("Failed to get time from network time server.");
         DateTime systemTime = DateTime(F(__DATE__), F(__TIME__));
         rtc.begin();
-        rtc.adjust(systemTime); 
+        rtc.adjust(systemTime);
     }
  
     //get and print the adjusted rtc time
@@ -79,29 +75,25 @@ void setup()
     Serial.println(now.timestamp(DateTime::TIMESTAMP_FULL));
 
     // Set up alarm to tick time when screen is on
-    DateTime alarm = DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute()+1); 
+    DateTime alarm = DateTime(now.year(), now.month(), now.day(), now.hour(), now.minute()+1); //every minute
     rtc.setAlarm(0, alarm);
     rtc.enableAlarm(0, rtc.MATCH_SS); //Enable alarm to match every minute
     rtc.attachInterrupt(Alarm_ISR);
 
-
     //Start the Temp
     dht.begin(); 
-
 
     // Set up display
     tft.begin();
     tft.setRotation(3);
     tft.setTextColor(TFT_BLACK);
-    tft.setTextSize(3);
     digitalWrite(LCD_BACKLIGHT, HIGH);
     delay(3000);
     digitalWrite(LCD_BACKLIGHT, LOW);
     
-
     //Setup Interrupt to wake screen
-    pinMode(WIO_KEY_A, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(WIO_KEY_A), Button_ISR, LOW);
+    pinMode(WIO_KEY_C, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(WIO_KEY_C), Button_ISR, FALLING); //Falling is better to avoid bouncing
 }
 
 void loop()
@@ -138,27 +130,50 @@ void getTempHumd( void )
 }
 
 //Function to format datetime to string
-void DateTimeStringFormatter( DateTime & now, String & date_time )
+void DateTimeStringFormatter( DateTime & now, String & date_, String & clock_ )
 {
-    date_time = ( String( now.year() ) + "/" + String( now.month() ) + "/" + String( now.day() ) );
-    date_time += " ";
-    date_time += String( now.hour() );
-    date_time += ":";
-    date_time += String( now.minute() );
+    date_ = String( daysOfTheWeek[ now.dayOfTheWeek() ] ) + ", ";
+    date_ += ( String( now.day() ) + " " + String( monthsOfTheYear[ now.month() - 1 ]  ) + 
+                " " + String( now.year() ) );
+    clock_ = String(now.hour()) + ":";
+    clock_ += now.minute() < 10 ? "0" + String(now.minute()) : String(now.minute());
+}
+
+//Template for Screen
+void screenTemplate (void)
+{
+  tft.fillScreen(TFT_WHITE);
+  tft.fillRect(1, 1, 318, 238, TFT_BLACK);
+  tft.fillRect(4, 4, 312, 232, TFT_WHITE);
+  tft.fillRect(1, 100, 318, 50, TFT_BLACK);
+  tft.fillRect(4, 103, 312, 44, TFT_WHITE);
+  tft.fillRect(159, 100, 3, 138, TFT_BLACK);
+  tft.drawString("Temperature", 8, 112);
+  tft.drawString("Humidity", 190, 112);
 }
 
 //Function to show screen and display temp & Humdity
 void screenShow( void )
 {
     digitalWrite(LCD_BACKLIGHT, HIGH);
-    tft.fillScreen(TFT_WHITE);
+    tft.setFreeFont(&FreeSansBoldOblique12pt7b);
+    tft.setTextColor(TFT_BLACK);
+    screenTemplate();
     DateTime now = rtc.now();
-    String devicedatetime = "";
-    DateTimeStringFormatter( now, devicedatetime );
-    X_OFFSET = 15 + ( (devicedatetime.length() -1 ) * 19 );
-    tft.drawString(devicedatetime, 0, 0);
-    tft.drawString("Temp: " + String(temp_humd[0], 2) + " C", 0, 50); //prints strings from (0, 0)
-    tft.drawString("Hum: " + String(temp_humd[1], 2) + " %", 0, 100); //prints strings from (0, 0)
+    String devicedate = "";
+    String devicetime = "";
+    DateTimeStringFormatter( now, devicedate, devicetime  );
+    tft.setFreeFont(&FreeSansBoldOblique18pt7b);
+    tft.drawString( devicedate,  15, 8);
+    tft.setTextColor(TFT_RED);
+    tft.setFreeFont(&FreeSansBoldOblique24pt7b);
+    tft.drawString(devicetime, 100, 45);
+    tft.setFreeFont(&FreeSansBoldOblique18pt7b);
+    tft.setTextColor(TFT_BLACK);
+    tft.drawString(String(temp_humd[0], 2) + " °C", 15, 180); 
+    tft.drawString(String(temp_humd[1], 2) + " %", 175, 180); 
+    tft.fillCircle(115,180,4,TFT_BLACK);
+    tft.fillCircle(115,180,1,TFT_WHITE); 
 }
 
 //Function to clear screen and turn it off
@@ -171,6 +186,8 @@ void screenOff( void )
 //Interrupt Service Routine for button A 
 void Button_ISR( void )
 {
+  Serial.println("Button Pressed!");
+  
     if ( !SCREEN_FLAG )
     {
         screenShow();
@@ -190,13 +207,17 @@ void Alarm_ISR( uint32_t flag )
     if (SCREEN_FLAG)
     {
         Serial.println("Alarm in flag!");
-
         DateTime now = rtc.now();
-        String devicedatetime = "";
-        DateTimeStringFormatter( now, devicedatetime );
-        tft.fillRect( 0, 0, X_OFFSET+5, Y_OFFSET+5, TFT_WHITE );
-        tft.drawString(devicedatetime, 5, 5);
-        X_OFFSET = 15 + ( (devicedatetime.length() -1 ) * 19 );
+        String devicedate = "";
+        String devicetime = "";
+        tft.setFreeFont(&FreeSansBoldOblique18pt7b);
+        tft.setTextColor(TFT_BLACK);
+        DateTimeStringFormatter( now, devicedate, devicetime  );
+        tft.fillRect(12, 8, 300, 85, TFT_WHITE);
+        tft.drawString( devicedate,  15, 8);
+        tft.setTextColor(TFT_RED);
+        tft.setFreeFont(&FreeSansBoldOblique24pt7b);
+        tft.drawString(devicetime, 100, 45);
     }
 }
 
