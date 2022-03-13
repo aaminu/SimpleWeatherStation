@@ -29,10 +29,12 @@ using arraytype = std::array< float, 2 >;
 //declare the Temperature and Humidity object
 DHT dht(D0, DHT11);
 arraytype temp_humd;
+unsigned long lastMesTime {0};
 
 //LCD Display on the WIO
 TFT_eSPI tft;
 volatile bool SCREEN_FLAG {0};
+volatile unsigned long screenTime {0};
 
 
 //Prototypes for function defined at the bottom of this doucment
@@ -98,14 +100,26 @@ void setup()
 
 void loop()
 {
-    getTempHumd();
-    delay(300000);
+    // Measure only after every 5mins
+    unsigned long now = millis();
+    if (now - lastMesTime > 300000)
+    {
+        lastMesTime = now;
 
-    //check if screen is on
+        getTempHumd(); //get temperature and Humidity
+    }
+
+    
+    //Screen stays on for 3mins
     if (SCREEN_FLAG)
     {
-        screenOff();
-        SCREEN_FLAG = !SCREEN_FLAG;
+        unsigned long now = millis();
+        if (now - screenTime > 180000)
+        {
+            screenOff();
+            SCREEN_FLAG = !SCREEN_FLAG;
+            screenTime = 0;
+        }  
     }
         
 }
@@ -190,6 +204,7 @@ void Button_ISR( void )
   
     if ( !SCREEN_FLAG )
     {
+        screenTime = millis();
         screenShow();
         SCREEN_FLAG = !SCREEN_FLAG ;
     }
@@ -197,6 +212,7 @@ void Button_ISR( void )
     {
         screenOff();
         SCREEN_FLAG = !SCREEN_FLAG;
+        screenTime = 0;
     }
 }
 
