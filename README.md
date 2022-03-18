@@ -6,10 +6,11 @@ This is a am simple Weather station that is made of two pysical components:
 I would want to assume you know how to add the board to your Arduino Board Manager. However, if that is not the case, kindly read through this [wiki](https://wiki.seeedstudio.com/Wio-Terminal-Getting-Started/). To use these code the following, please do the follow.
 1. rename the *config_.h*  to *config.h*
 2. fill in the content especially your wifi and password. You can leave the NTP parameter as is
-3. Install the following into your library if not already there.
+3. Install the following into your library if not already there(i.e. Sketch -> Include Libarary -> Manage Libraries).
     - Seeed *Arduino rpcWiFi* (version: 1.0.5)
     - Seeed *Arduino rpcUnified* (version: 2.1.3)
     - Seeed *Arduino RTC* (version: 2.0.0)
+    - DHT sensor library (min version: 1.4.1)
 
 The content of the code is well commented to carry you along. Take your time to go through it as this isn't the usual weather station. It tries to intoduce you to other simple functionality like interrupts, usage of the WiFi, Real time clock updating etc.. 
 
@@ -22,7 +23,7 @@ The content of the code is well commented to carry you along. Take your time to 
 4. It attaches an interrupt for the wake up button
 5. Displays the screen momentarily before turning it off.
 
-To turn on the screen, Press *Button_C* (changeable) and same button to turn off the screen. The screen also turns of before or after a maximum period of 5mins.
+To turn on the screen, Press *Button_C* (changeable) and same button to turn off the screen. The screen also turns period of 3mins. The system measures Temperature and Humidity every 5mins.
 
 Here's a picture of what the weather station looks like:
 ![Weather Station](Images/example.png)
